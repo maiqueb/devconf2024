@@ -2,22 +2,24 @@ package main
 
 import (
 	"context"
-	"database/sql"
+	dbsql "database/sql"
 	"encoding/json"
 	"fmt"
+	"net"
+	"strconv"
+	"strings"
+
 	"github.com/containernetworking/cni/pkg/skel"
 	"github.com/containernetworking/cni/pkg/types"
 	current "github.com/containernetworking/cni/pkg/types/100"
 	cniVersion "github.com/containernetworking/cni/pkg/version"
-	"net"
-	"strconv"
-	"strings"
 
 	logging "github.com/k8snetworkplumbingwg/cni-log"
 
 	_ "github.com/lib/pq"
 
 	"github.com/maiqueb/devconf2024/pkg/config"
+	"github.com/maiqueb/devconf2024/pkg/sql"
 )
 
 func main() {
@@ -30,9 +32,7 @@ func main() {
 			Del: func(_ *skel.CmdArgs) error {
 				return nil
 			},
-			GC: func(_ *skel.CmdArgs) error {
-				return nil
-			},
+			GC:     cmdGC,
 			Status: status,
 		}, cniVersion.All,
 		"Dummy IPAM CNI for learning purposes",
@@ -49,7 +49,7 @@ func status(args *skel.CmdArgs) error {
 	ipamConf := netConf.IPAMConfig
 	logging.Infof("read configuration: %v", ipamConf)
 
-	db, err := sql.Open("postgres", ipamConf.SqlConnection())
+	db, err := dbsql.Open("postgres", ipamConf.SqlConnection())
 	if err != nil {
 		return logging.Errorf("read configuration: %v", ipamConf)
 	}
@@ -61,13 +61,14 @@ func status(args *skel.CmdArgs) error {
 }
 
 func cmdAdd(args *skel.CmdArgs) error {
+	logging.Infof("INVOKED IPAM ADD")
 	netConf, err := loadIPAMConf(args.StdinData)
 	if err != nil {
 		return err
 	}
 
 	ipamConf := netConf.IPAMConfig
-	db, err := sql.Open("postgres", ipamConf.SqlConnection())
+	db, err := dbsql.Open("postgres", ipamConf.SqlConnection())
 	if err != nil {
 		return logging.Errorf("read configuration: %v", ipamConf)
 	}
@@ -83,7 +84,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 		return fmt.Errorf("error parsing the CNI args %q: %w", args.Args, err)
 	}
 
-	if _, err = db.ExecContext(context.Background(), persistIPQuery(), podUID, args.IfName, ip); err != nil {
+	if _, err = db.ExecContext(context.Background(), sql.PersistIPQuery(), podUID, args.IfName, ip); err != nil {
 		return fmt.Errorf("error persisting the IP address: %w", err)
 	}
 
@@ -96,6 +97,86 @@ func cmdAdd(args *skel.CmdArgs) error {
 	}
 
 	return types.PrintResult(result, netConf.CNIVersion)
+}
+
+type ipamReservation struct {
+	id        int
+	podUID    string
+	ifaceName string
+	ip        string
+	createdAt string
+}
+
+func cmdGC(args *skel.CmdArgs) error {
+	logging.Infof("INVOKED IPAM GC")
+	netConf, err := loadIPAMConf(args.StdinData)
+	if err != nil {
+		return err
+	}
+
+	logging.Infof("read configuration: %v", netConf)
+	for _, attach := range netConf.ValidAttachments {
+		logging.Infof("valid attachment: %v", attach)
+	}
+
+	ipamConf := netConf.IPAMConfig
+	db, err := dbsql.Open("postgres", ipamConf.SqlConnection())
+	if err != nil {
+		return logging.Errorf("read configuration: %v", ipamConf)
+	}
+	defer func() {
+		_ = db.Close()
+	}()
+
+	rows, err := db.QueryContext(context.Background(), sql.SelectAllQuery())
+	if err != nil {
+		return logging.Errorf("failed to query all IPs: %v", err)
+	}
+
+	var currentIPAMReservations []ipamReservation
+	for rows.Next() {
+		var (
+			id        int
+			podUID    string
+			ifaceName string
+			ip        string
+			createdAt string
+		)
+		if err := rows.Scan(&id, &podUID, &ifaceName, &ip, &createdAt); err != nil {
+			return logging.Errorf("failed to scan variables: %v", err)
+		}
+
+		cachedIP := ipamReservation{
+			id:        id,
+			podUID:    podUID,
+			ifaceName: ifaceName,
+			ip:        ip,
+			createdAt: createdAt,
+		}
+		logging.Infof("cachedEntry: %v", cachedIP)
+		currentIPAMReservations = append(currentIPAMReservations, cachedIP)
+	}
+
+	desiredAttachments := indexValidAttachments(netConf.ValidAttachments)
+	logging.Infof("desired attachments: %v", desiredAttachments)
+	for _, existingReservation := range currentIPAMReservations {
+		existingReservationKey := attachmentKey(existingReservation.podUID, existingReservation.ifaceName)
+		logging.Infof("looking at attachment %q", existingReservationKey)
+		if _, isIPAMAllocationInUse := desiredAttachments[existingReservationKey]; !isIPAMAllocationInUse {
+			var deletedRows int
+			if err = db.QueryRowContext(
+				context.Background(),
+				sql.DeleteIPQuery(),
+				existingReservation.podUID,
+				existingReservation.ifaceName,
+			).Scan(&deletedRows); err != nil {
+				return fmt.Errorf("error DELETING the IP address: %w", err)
+			}
+			logging.Infof("successfully deleted %d rows", deletedRows)
+		}
+	}
+
+	return nil
 }
 
 func loadIPAMConf(bytes []byte) (*config.NetConf, error) {
@@ -146,6 +227,14 @@ func buildIPConfig(ipWithSubnet string) *current.IPConfig {
 	}
 }
 
-func persistIPQuery() string {
-	return `insert into ips(pod_id, interface, ip) values($1, $2, $3)`
+func indexValidAttachments(attachments []types.GCAttachment) map[string]struct{} {
+	indexedAttachments := map[string]struct{}{}
+	for _, attachment := range attachments {
+		indexedAttachments[attachmentKey(attachment.ContainerID, attachment.IfName)] = struct{}{}
+	}
+	return indexedAttachments
+}
+
+func attachmentKey(containerID, ifName string) string {
+	return fmt.Sprintf("%s-%s", containerID, ifName)
 }

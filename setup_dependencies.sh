@@ -72,7 +72,12 @@ function install_cnitool {
         cnitool_dir=$(mktemp -d)
         git_clone $cnitool_repo $cnitool_dir
         cd $cnitool_dir
-        go build -o $TOP_DIR/plugins/cnitool cnitool/cnitool.go
+
+        # MUST BUILD CNI TOOL FROM A SPECIFIC PR (implements GC API)
+        git fetch origin "pull/1076/head:gc-verb-cni-tool"
+        git checkout gc-verb-cni-tool
+
+        go build -o $TOP_DIR/plugins/cnitool cnitool/main.go
         cd $TOP_DIR
         rm -rf $cnitool_dir
     fi
