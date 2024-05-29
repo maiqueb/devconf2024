@@ -172,7 +172,9 @@ func cmdGC(args *skel.CmdArgs) error {
 			).Scan(&deletedRows); err != nil {
 				return fmt.Errorf("error DELETING the IP address: %w", err)
 			}
-			logging.Infof("successfully deleted %d rows", deletedRows)
+			if deletedRows > 0 {
+				logging.Infof("successfully deleted the existing allocation for %q", existingReservationKey)
+			}
 		}
 	}
 
