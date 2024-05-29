@@ -5,13 +5,14 @@ import (
 	dbsql "database/sql"
 	"encoding/json"
 	"fmt"
+	"net"
+	"strconv"
+	"strings"
+
 	"github.com/containernetworking/cni/pkg/skel"
 	"github.com/containernetworking/cni/pkg/types"
 	current "github.com/containernetworking/cni/pkg/types/100"
 	cniVersion "github.com/containernetworking/cni/pkg/version"
-	"net"
-	"strconv"
-	"strings"
 
 	logging "github.com/k8snetworkplumbingwg/cni-log"
 
