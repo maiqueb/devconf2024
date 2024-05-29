@@ -5,7 +5,11 @@ func PersistIPQuery() string {
 }
 
 func DeleteIPQuery() string {
-	return "delete from ips where pod_id=$1 and interface=$2;"
+	return `
+		with deleted_rows as (
+			delete from ips where pod_id=$1 and interface=$2 returning *
+		) select count(*) from deleted_rows;
+`
 }
 
 func SelectAllQuery() string {

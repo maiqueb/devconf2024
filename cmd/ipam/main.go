@@ -163,14 +163,16 @@ func cmdGC(args *skel.CmdArgs) error {
 		existingReservationKey := attachmentKey(existingReservation.podUID, existingReservation.ifaceName)
 		logging.Infof("looking at attachment %q", existingReservationKey)
 		if _, isIPAMAllocationInUse := desiredAttachments[existingReservationKey]; !isIPAMAllocationInUse {
-			if _, err = db.ExecContext(
+			var deletedRows int
+			if err = db.QueryRowContext(
 				context.Background(),
 				sql.DeleteIPQuery(),
 				existingReservation.podUID,
 				existingReservation.ifaceName,
-			); err != nil {
+			).Scan(&deletedRows); err != nil {
 				return fmt.Errorf("error DELETING the IP address: %w", err)
 			}
+			logging.Infof("successfully deleted %d rows", deletedRows)
 		}
 	}
 
