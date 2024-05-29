@@ -33,9 +33,7 @@ func main() {
 			Del: func(_ *skel.CmdArgs) error {
 				return nil
 			},
-			GC: func(_ *skel.CmdArgs) error {
-				return nil
-			},
+			GC:     cmdGC,
 			Status: status,
 		}, cniVersion.All,
 		"Dummy CNI for learning purposes",
@@ -89,6 +87,24 @@ func cmdAdd(args *skel.CmdArgs) error {
 	}
 
 	return types.PrintResult(result, netConf.CNIVersion)
+}
+
+func cmdGC(args *skel.CmdArgs) error {
+	logging.Infof("INVOKED GC")
+	netConf, err := loadNetConf(args.StdinData)
+	if err != nil {
+		return fmt.Errorf("failed rendering plugin configuration: %w", err)
+	}
+
+	logging.Infof("read configuration: %v", netConf)
+	logging.Infof("read IPAM CONFIG: %v", netConf.IPAMConfig)
+	logging.Infof("read attachments to keep: %v", netConf.ValidAttachments)
+
+	if err := ipam.ExecGC(netConf.IPAMConfig.Type, args.StdinData); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func loadNetConf(bytes []byte) (*config.NetConf, error) {
