@@ -11,8 +11,8 @@ github.com/containernetworking/cni/pkg/types/create
 github.com/containernetworking/cni/pkg/types/internal
 github.com/containernetworking/cni/pkg/utils
 github.com/containernetworking/cni/pkg/version
-# github.com/containernetworking/plugins v1.5.0
-## explicit; go 1.20
+# github.com/containernetworking/plugins v1.5.0 => github.com/maiqueb/plugins v1.0.0-rc1.0.20240529145227-36d58b2dc9db
+## explicit; go 1.21
 github.com/containernetworking/plugins/pkg/ip
 github.com/containernetworking/plugins/pkg/ipam
 github.com/containernetworking/plugins/pkg/ns
@@ -46,3 +46,4 @@ golang.org/x/sys/unix
 gopkg.in/natefinch/lumberjack.v2
 # gopkg.in/yaml.v2 v2.4.0
 ## explicit; go 1.15
+# github.com/containernetworking/plugins => github.com/maiqueb/plugins v1.0.0-rc1.0.20240529145227-36d58b2dc9db
