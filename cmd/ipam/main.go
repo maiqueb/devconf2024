@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"database/sql"
+	dbsql "database/sql"
 	"encoding/json"
 	"fmt"
 	"github.com/containernetworking/cni/pkg/skel"
@@ -18,6 +18,7 @@ import (
 	_ "github.com/lib/pq"
 
 	"github.com/maiqueb/devconf2024/pkg/config"
+	"github.com/maiqueb/devconf2024/pkg/sql"
 )
 
 func main() {
@@ -47,7 +48,7 @@ func status(args *skel.CmdArgs) error {
 	ipamConf := netConf.IPAMConfig
 	logging.Infof("read configuration: %v", ipamConf)
 
-	db, err := sql.Open("postgres", ipamConf.SqlConnection())
+	db, err := dbsql.Open("postgres", ipamConf.SqlConnection())
 	if err != nil {
 		return logging.Errorf("read configuration: %v", ipamConf)
 	}
@@ -66,7 +67,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 	}
 
 	ipamConf := netConf.IPAMConfig
-	db, err := sql.Open("postgres", ipamConf.SqlConnection())
+	db, err := dbsql.Open("postgres", ipamConf.SqlConnection())
 	if err != nil {
 		return logging.Errorf("read configuration: %v", ipamConf)
 	}
@@ -82,7 +83,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 		return fmt.Errorf("error parsing the CNI args %q: %w", args.Args, err)
 	}
 
-	if _, err = db.ExecContext(context.Background(), persistIPQuery(), podUID, args.IfName, ip); err != nil {
+	if _, err = db.ExecContext(context.Background(), sql.PersistIPQuery(), podUID, args.IfName, ip); err != nil {
 		return fmt.Errorf("error persisting the IP address: %w", err)
 	}
 
@@ -118,7 +119,7 @@ func cmdGC(args *skel.CmdArgs) error {
 	}
 
 	ipamConf := netConf.IPAMConfig
-	db, err := sql.Open("postgres", ipamConf.SqlConnection())
+	db, err := dbsql.Open("postgres", ipamConf.SqlConnection())
 	if err != nil {
 		return logging.Errorf("read configuration: %v", ipamConf)
 	}
@@ -126,7 +127,7 @@ func cmdGC(args *skel.CmdArgs) error {
 		_ = db.Close()
 	}()
 
-	rows, err := db.QueryContext(context.Background(), selectAllQuery())
+	rows, err := db.QueryContext(context.Background(), sql.SelectAllQuery())
 	if err != nil {
 		return logging.Errorf("failed to query all IPs: %v", err)
 	}
@@ -163,7 +164,7 @@ func cmdGC(args *skel.CmdArgs) error {
 		if _, isIPAMAllocationInUse := desiredAttachments[existingReservationKey]; !isIPAMAllocationInUse {
 			if _, err = db.ExecContext(
 				context.Background(),
-				deleteIPQuery(),
+				sql.DeleteIPQuery(),
 				existingReservation.podUID,
 				existingReservation.ifaceName,
 			); err != nil {
@@ -221,18 +222,6 @@ func buildIPConfig(ipWithSubnet string) *current.IPConfig {
 		},
 		Gateway: nil,
 	}
-}
-
-func persistIPQuery() string {
-	return `insert into ips(pod_id, interface, ip) values($1, $2, $3)`
-}
-
-func deleteIPQuery() string {
-	return "delete from ips where pod_id=$1 and interface=$2;"
-}
-
-func selectAllQuery() string {
-	return "select * from ips;"
 }
 
 func indexValidAttachments(attachments []types.GCAttachment) map[string]struct{} {
