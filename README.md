@@ -1,5 +1,7 @@
 # Devconf2024 - Teaching an old dog new tricks
-Demo scripts / config for the Teaching an old dog new tricks talk at Devconf 2024.
+Demo scripts / config for the
+[Teaching an old dog new tricks](https://pretalx.com/devconf-cz-2024/talk/DYTV8A/)
+talk at Devconf 2024.
 
 ## Requirements
 - git
