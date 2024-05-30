@@ -1,6 +1,6 @@
 #!/bin/bash -x
 
-if [ "$#" -ne 3 || "$#" -ne 4 ]; then
+if [ "$#" -ne 3 ] && [ "$#" -ne 4 ]; then
     echo "$0 <name of the network configuration to use> <pod name> <IP> [interface name]"
     exit 1
 fi
