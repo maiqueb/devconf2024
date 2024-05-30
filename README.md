@@ -343,3 +343,15 @@ podman exec -t ipam-db psql -U cni -h 192.168.122.1 ipam -c "select * from ips;"
 ```
 
 ## Conclusions
+This repo contains demo scripts and code for two CNI plugins - a net config,
+and an IPAM CNI plugins - for learning purposes.
+
+Following the instructions in this README, the reader can learn about the two
+new verbs introduced in
+[CNI spec 1.1](https://github.com/containernetworking/cni/blob/v1.2.0/SPEC.md):
+`STATUS` and `GC`.
+
+In a real cluster, `STATUS` would be used by the runtime to know if the network
+is ready to be used, whereas the `GC` would be used by the runtime to garbage
+collect resources which have leaked in the system - e.g. resources which the
+CNI plugin failed to cleanup on missed CNI DELs, or failed CNI ADDs.
