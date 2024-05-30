@@ -1,5 +1,7 @@
 # Devconf2024 - Teaching an old dog new tricks
-Demo scripts / config for the Teaching an old dog new tricks talk at Devconf 2024.
+Demo scripts / config for the
+[Teaching an old dog new tricks](https://pretalx.com/devconf-cz-2024/talk/DYTV8A/)
+talk at Devconf 2024.
 
 ## Requirements
 - git
@@ -238,7 +240,9 @@ podman exec ipam-db psql -U cni -h 192.168.122.1 ipam -c "select * from ips;"
   9 | cnitool-bf4114a94da8d19d2b93 | eth0      | 192.168.200.123/24 | 2024-05-30 08:39:13.470398
 (3 rows)
 ```
-We should see 3 allocations - one for each "pod" we have created.
+We should see 3 allocations - one for each "pod" we have created; this can be
+visualized in the following picture:
+![](assets/01-initial-state.png)
 
 Let's now see GC in action. Let's first simulate everything is OK with our
 workloads; for that, we indicate we want to preserve the allocations for the
@@ -291,10 +295,15 @@ podman exec ipam-db psql -U cni -h 192.168.122.1 ipam -c "select * from ips;"
 (3 rows)
 ```
 
-We should still see the same 3 allocations; let's now imagine pod2 died, and
-CRI failed to invoke the corresponding CNI DEL:
+We should still see the same 3 allocations; let's now imagine pod3 died, and
+CRI failed to invoke the corresponding CNI DEL; that would be visualized in the
+following picture (the stale IP is identified in **bold**):
+
+![](assets/02-stale-ip.png)
+
+Let's use CNI tool to issue the GC command:
 ```shell
-demo-scenarios/gc.sh ipam-status pod1 pod3
+demo-scenarios/gc.sh ipam-status pod1 pod2
 + '[' 3 -lt 1 ']'
 + net_name=ipam-status
 + shift
@@ -315,7 +324,7 @@ demo-scenarios/gc.sh ipam-status pod1 pod3
 2024-05-30T10:52:53.697772352+02:00 [info] INVOKED GC
 2024-05-30T10:52:53.697912831+02:00 [info] read configuration: &{{1.1.0 ipam-status status-cni map[] {} {[]  [] []} map[] <nil> [{cnitool-294e5a00691dfbb9d727 eth0} {cnitool-bf4114a94da8d19d2b93 eth0}]}   0xc0000262a0}
 2024-05-30T10:52:53.697931431+02:00 [info] read IPAM CONFIG: &{{ipam-status-cni} 192.168.122.1 5432 cni cni ipam}
-2024-05-30T10:52:53.697935396+02:00 [info] read attachments to keep: [{cnitool-294e5a00691dfbb9d727 eth0} {cnitool-bf4114a94da8d19d2b93 eth0}]
+2024-05-30T10:52:53.697935396+02:00 [info] read attachments to keep: [{cnitool-294e5a00691dfbb9d727 eth0} {cnitool-e1a2493cc355134dc89d eth0}]
 2024-05-30T10:52:53.699570429+02:00 [info] INVOKED IPAM GC
 2024-05-30T10:52:53.699711694+02:00 [info] read configuration: &{{1.1.0 ipam-status status-cni map[] {} {[]  [] []} map[] <nil> [{cnitool-294e5a00691dfbb9d727 eth0} {cnitool-bf4114a94da8d19d2b93 eth0}]}   0xc0000ae1e0}
 2024-05-30T10:52:53.699732914+02:00 [info] valid attachment: {cnitool-294e5a00691dfbb9d727 eth0}
@@ -323,11 +332,11 @@ demo-scenarios/gc.sh ipam-status pod1 pod3
 2024-05-30T10:52:53.705327206+02:00 [info] cachedEntry: {1 cnitool-294e5a00691dfbb9d727 eth0 192.168.200.1/24 2024-05-30T08:52:38.284902Z}
 2024-05-30T10:52:53.705341137+02:00 [info] cachedEntry: {2 cnitool-e1a2493cc355134dc89d eth0 192.168.200.22/24 2024-05-30T08:52:41.535088Z}
 2024-05-30T10:52:53.70534523+02:00 [info] cachedEntry: {3 cnitool-bf4114a94da8d19d2b93 eth0 192.168.200.123/24 2024-05-30T08:52:45.429173Z}
-2024-05-30T10:52:53.705361475+02:00 [info] desired attachments: map[cnitool-294e5a00691dfbb9d727-eth0:{} cnitool-bf4114a94da8d19d2b93-eth0:{}]
+2024-05-30T10:52:53.705361475+02:00 [info] desired attachments: map[cnitool-294e5a00691dfbb9d727-eth0:{} cnitool-e1a2493cc355134dc89d-eth0:{}]
 2024-05-30T10:52:53.705372017+02:00 [info] looking at attachment "cnitool-294e5a00691dfbb9d727-eth0"
 2024-05-30T10:52:53.705376697+02:00 [info] looking at attachment "cnitool-e1a2493cc355134dc89d-eth0"
-2024-05-30T10:52:53.708987344+02:00 [info] successfully deleted the existing allocation for "cnitool-e1a2493cc355134dc89d-eth0"
-2024-05-30T10:52:53.70899233+02:00 [info] looking at attachment "cnitool-bf4114a94da8d19d2b93-eth0"
+2024-05-30T10:52:53.705380624+02:00 [info] looking at attachment "cnitool-bf4114a94da8d19d2b93-eth0"
+2024-05-30T10:52:53.70899233+02:00 [info] successfully deleted the existing allocation for "cnitool-bf4114a94da8d19d2b93-eth0"
 ```
 
 As we can see in the logs, one of the entries was deleted.
@@ -338,9 +347,13 @@ podman exec -t ipam-db psql -U cni -h 192.168.122.1 ipam -c "select * from ips;"
  id |            pod_id            | interface |         ip         |         created_on         
 ----+------------------------------+-----------+--------------------+----------------------------
   7 | cnitool-294e5a00691dfbb9d727 | eth0      | 192.168.200.1/24   | 2024-05-30 08:39:04.578071
-  9 | cnitool-bf4114a94da8d19d2b93 | eth0      | 192.168.200.123/24 | 2024-05-30 08:39:13.470398
+  8 | cnitool-e1a2493cc355134dc89d | eth0      | 192.168.200.22/24  | 2024-05-30 08:39:09.178036
 (2 rows)
 ```
+
+The stale IP address was removed by the CNI plug, which can be visualized in
+the following picture:
+![](assets/03-gc-ip.png)
 
 ## Conclusions
 This repo contains demo scripts and code for two CNI plugins - a net config,
